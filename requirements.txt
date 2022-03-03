@@ -30,7 +30,12 @@ jsonschema==4.4.0
 jupyter==1.0.0
 jupyter-client==7.1.2
 jupyter-console==6.4.0
+jupyter-contrib-core==0.3.3
+jupyter-contrib-nbextensions==0.5.1
 jupyter-core==4.9.2
+jupyter-highlight-selected-word==0.2.0
+jupyter-latex-envs==1.4.6
+jupyter-nbextensions-configurator==0.4.1
 jupyterlab-pygments==0.1.2
 jupyterlab-widgets==1.0.2
 lxml==4.8.0
@@ -62,6 +67,7 @@ python-dateutil==2.8.2
 pytz==2021.3
 pywin32==303
 pywinpty==2.0.2
+PyYAML==6.0
 pyzmq==22.3.0
 qtconsole==5.2.2
 QtPy==2.0.1
