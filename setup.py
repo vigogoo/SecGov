@@ -140,7 +140,7 @@ def get_search_results(form_data,max_results_needed=float('inf')):
     "forms":forms.split(','),
     "startdt":date_strings[0],
     "enddt":date_strings[1]
-    })
+    },default=str)
     headers = {
       'authority': 'efts.sec.gov',
       'accept': 'application/json, text/javascript, */*; q=0.01',
@@ -153,7 +153,6 @@ def get_search_results(form_data,max_results_needed=float('inf')):
       'sec-fetch-dest': 'empty',
       'referer': 'https://www.sec.gov/',
     }
-
     r = requests.post(url, headers=headers, data=payload)
     if r.status_code != 200:
         # retry 3 times
@@ -164,6 +163,7 @@ def get_search_results(form_data,max_results_needed=float('inf')):
                 print(f"FATAL ERROR: 3 retries failed to retrieve information from url:\n{url}")
                 logging.error(f'FATAL ERROR! 3 retries failed to retrieve information from url:\n{url}')
                 return False
+
 
     response_data = json.loads(r.text)
     total_results = response_data.get('hits',{}).get('total',{}).get('value',0)
@@ -249,7 +249,7 @@ def create_task_1_UI():
         form['target'] = doc_section.value
         form['filing_date_start'] = date_from.value
         form['filing_date_end'] = date_to.value
-        form['search_type'] = 't'
+        form['search_type'] = search_type.value
         #generate dynamic search url for queries
         search_url = generate_search_url(form)
 
@@ -267,7 +267,6 @@ def create_task_1_UI():
                 
                 print("FILING SUMMARY LINK",filing_summary_link, end="\n\n")
                 index_page = links_dict.get('index_page')
-                print(index_page,index_page)
                 soup = get_generic_marketdata(filing_summary_link)
                 tag = soup.find( lambda tag:tag.name.lower() == "shortname" and table_to_fetch.lower() in tag.text.lower() )
                 
@@ -281,19 +280,18 @@ def create_task_1_UI():
 
                     print('FINANCIAL DATA TITLE:',table_full_ttl)
                     print('TABLE LINK:',table_link, end="\n\n")
-
                     display(table_MN)
                     
                 else:
                     print(f"Document with title: {table_to_fetch} Not found")
             # If user was searching for a Particular Item in Document handler
-            if form_inputs.get('search_type','').lower() == 'i' and results is not None:
+            if form.get('search_type','').lower() == 'i' and results is not None:
                 
                 print(
-                    f"Your searching for a particular Item in Part {form_inputs.get('item_part')} and Item number {form_inputs.get('target')}",
+                    f"Your searching for a particular Item in Part {form.get('item_part')} and Item number {form.get('target')}",
                     end="\n\n"
                 )
-                print(form_inputs, end="\n\n")
+                print(form, end="\n\n")
                 links_dict = results.to_dict('records')[0]
                 print(links_dict)
         # todo: end execution if results is none
@@ -340,12 +338,12 @@ def create_task_1_UI():
     search_type.observe(search_type_event_handler, names='value')
 
     date_from = wdgts.DatePicker(
-        description='Pick a Date:',
+        description='Filed from:',
         disabled=False
     )
 
     date_to = wdgts.DatePicker(
-        description='Pick a Date:',
+        description='Filed to:',
         disabled=False
     )
 
