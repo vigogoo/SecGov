@@ -7,6 +7,7 @@
 
 
 import requests
+import urllib.request
 import pandas as pd
 from bs4 import BeautifulSoup
 import re
@@ -25,9 +26,10 @@ import json
 # UI
 import ipywidgets as wdgts
 from ipywidgets import GridspecLayout
+from IPython.display import display, HTML,IFrame
 
-
-# In[ ]:
+# vars
+import sec_variables as sec_vars
 
 
 # opts = Options()
@@ -38,11 +40,7 @@ from ipywidgets import GridspecLayout
 
 logging.basicConfig(filename='v.log', filemode='w', level=logging.ERROR, format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
 
-# try:
-#     driver = Chrome(options=opts, executable_path='./chromedriver.exe') 
-# except Exception as e:
-#     logging.error(f'FATAL ERROR! {e}')
-#     sys.exit()
+
 
 # variables
 BASE_URL = "https://www.sec.gov/edgar/search/#/"
@@ -63,6 +61,19 @@ def generate_random_names():
      
     return name + ' ' + name.replace(' ','')+ str(random.choice(digits))+'@gmail.com'
 
+def sec_gov_print(message):
+    #out = wdgts.Output(layout={'border': '1px solid black'})
+    #with out:
+    print(message)
+    #display(HTML( f'<span class="ansi-green-fg"> {message}</span>'))
+       
+    
+def clean_soup(soup):
+    for tag in soup(): 
+        if tag.attribute in ["class", "style"]:         
+            del tag[attribute] 
+    return soup
+
 def request_data(url,payload={}):
     headers = {
         'User-Agent': generate_random_names(),
@@ -77,11 +88,14 @@ def request_data(url,payload={}):
         if r.status_code != 200:
             r = requests.get(url)
             if r.status_code != 200:
-                print(f"FATAL ERROR: 3 retries failed to retrieve information from url:\n{url}")
+                sec_gov_print(f"FATAL ERROR: 3 retries failed to retrieve information from url:\n{url}")
                 logging.error(f'FATAL ERROR! 3 retries failed to retrieve information from url:\n{url}')
                 return False
         #exit() we want the script to continue
     return BeautifulSoup(r.text, 'html.parser')
+
+
+
 
 def get_date_string(filing_date_start,filing_date_end=None):
 #   2017-02-10 --- 2022-02-10
@@ -101,37 +115,191 @@ def get_date_string(filing_date_start,filing_date_end=None):
         return (default_end_date,default_start_date)
 
 
-# In[ ]:
-
 
 def get_generic_marketdata(url):
-    print('*****url in url*****',url)
+    
+    # headers = {
+    #     'User-Agent': generate_random_names(),
+    #     'Accept-Encoding':'gzip, deflate',
+    #     'Host': 'www.sec.gov'
+    #     }
     headers = {
-        'User-Agent': generate_random_names(),
-        'Accept-Encoding':'gzip, deflate',
-        'Host': 'www.sec.gov'
-        }
-    r = requests.get(url,headers=headers)
+    'accept-encoding':'gzip, deflate',
+    'host': 'www.sec.gov',
+    'authority': 'efts.sec.gov',
+    'accept': 'application/json, text/javascript, */*; q=0.01,gzip,deflate',
+    'content-type': 'text/html; charset=UTF-8',
+    'sec-ch-ua-mobile': '?0',
+    'user-agent': generate_random_names(),
+    'origin': 'https://www.sec.gov',
+    'sec-fetch-site': 'same-site',
+    'sec-fetch-mode': 'cors',
+    'sec-fetch-dest': 'empty',
+    'referer': 'https://www.sec.gov/',
+    }
 
-    if r.status_code != 200:
-        # retry 3 times
-        r = requests.get(url,headers=headers)
-        if r.status_code != 200:
-            r = requests.get(url)
-            if r.status_code != 200:
-                print(f"FATAL ERROR: 3 retries failed to retrieve information from url:\n{url}")
-                logging.error(f'FATAL ERROR! 3 retries failed to retrieve information from url:\n{url}')
-                return False
+    #r = requests.post(url, headers=headers)
+    #r = requests.get(url,headers=headers,allow_redirects=True)
+    r = urllib.request.Request(url,headers=headers)
+    
+   
+    # if r.status != 200:
+    #     # retry 3 times
+    #     r = urllib.request.Request(url,headers=headers)
+    #     if r.status != 200:
+    #         r = urllib.request.Request(url,headers=headers)
+    #         if r.status != 200:
+    #             sec_gov_print(f"FATAL ERROR: 3 retries failed to retrieve information from url:\n{url}")
+    #             logging.error(f'FATAL ERROR! 3 retries failed to retrieve information from url:\n{url}')
+    #             return False
         #exit() we want the script to continue
-    return BeautifulSoup(r.text, 'lxml') 
+    with urllib.request.urlopen(r) as f:
+        soup = f.read()
+    #return BeautifulSoup(r.text, 'lxml') 
+    return soup
 
+
+
+def get_item_2(results,form_data):
+
+
+    
+    #ITEM_DATA_URL = get_search_results(SEARCH_URL)
+    ITEM_DATA_URL = results['file_path']
+    print(ITEM_DATA_URL)
+    if not ITEM_DATA_URL:
+        print('No Results returned for that criteria')
+    else:
+        
+    
+        # with open('https://www.sec.gov/Archives/edgar/data/789019/000156459021039151/0001564590-21-039151.txt') as fp:
+        #     soup = BeautifulSoup(fp, 'html.parser')
+
+        soup = get_generic_marketdata(ITEM_DATA_URL)
+        soup = soup.decode("utf-8","ignore")
+        soup = BeautifulSoup(soup,"lxml")
+        #soup.prettify("utf-8")
+        soup = clean_soup(soup)
+ 
+      
+        all_links = []
+        item_2_candidates = []
+        item_3_candidates = []
+
+        target = form_data['target']
+        next_target = form_data['next_target']
+        target = target.replace("2.","").replace("Item","").strip()
+        file_type = form_data["filing_type"]
+        target_name = get_target_name(target)
+        next_target_name = get_target_name(next_target)
+        print(f'from {target}{target_name} to {next_target}{next_target_name}')
+        # next_target = {}
+        # next_target['target'] = get_next_target(target)
+        # next_target['name'] = get_target_name(next_target['target'],file_type)
+        # print('next_targetss',next_target)
+        #SEARCH THROUGH ALL THE toc headers so that we know the order of headers
+        # target_candidates = soup.find_all("a",re.compile(f'Item {target}.|Item {target}|Item&bnsp;{target}|Item&#160;{target}|Item{target}',flags=re.IGNORECASE))
+        # print(target_candidates)
+        # next_target_candidates = soup.find_all("a",re.compile(f'Item {next_target}.|Item {next_target}|Item&bnsp;{next_target}|Item&#160;{next_target}|Item{next_target}',flags=re.IGNORECASE))
+        # print(target_candidates)
+
+        target_candidates = soup.find_all("a",string=re.compile(f'{target_name}|Item {target}.|Item {target}|Item&bnsp;{target}|Item&#160;{target}|Item{target}|Item',flags=re.IGNORECASE))
+        next_target_candidates = soup.find_all("a",string=re.compile(f'{next_target_name}|Item {next_target}.|Item {next_target}|Item&bnsp;{next_target}|Item&#160;{next_target}|Item{next_target}|Item',flags=re.IGNORECASE))
+        print(target_candidates)
+        print(next_target_candidates)
+
+        # print(doc_links)
+        # for posn, link in enumerate(doc_links):
+        #     if link.string is None:
+        #         link.string = ""
+        #     if link.has_attr('href'):next_target_name
+        #         if  len(link.string) > 5 and "Table of Contents" not in link.string:
+        #             all_links.append((posn,link['href'],link.string))
+        #             print(link.string)
+        #             if (start := re.compile(get_target_name(target,file_type),flags=re.IGNORECASE).search(link.string)):
+        #                 print('start',start)
+
+                    
+        #                 item = (posn,link['href'],link.string)
+        #                 item_2_candidates.append(item)
+        #             if (end :=  re.compile(next_target['name'],flags=re.IGNORECASE).search(link.string)):
+        #                 item = (posn,link['href'],link.string)
+        #                 item_3_candidates.append(item)
+        #                 all_links.append(item)
+        #                 print('next',next_target['name'])
+        #         else:
+        #             all_links.append((posn,link['href'],"DO NOT USE**"+link.string))
+        
+        
+        
+
+
+        for link in all_links:
+            print(link)
+        print('Candidates')
+        print(item_2_candidates)
+    # Candidates
+    #[(9, '#ITEM_2_MANAGEMENTS_DISCUSSION_ANALYSIS_F', 'Management’s Discussion and Analysis of Financial Condition and Results of Operations')]
+    # For each candidate the paragraph in between this href and next href using doc_links
+        soup = str(clean_soup(soup))
+        #str(soup.html)
+        for candidate in item_2_candidates:
+            # the first match is for TOC so get the second match only
+            # get the candidate with highest start value
+            # candidate[1] is href = posn,link['href'],link.string
+            item_2_href_matchObj = re.finditer(candidate[1].replace("#",""), soup, flags=re.IGNORECASE)
+            
+            item_2_href_matchObj = list(item_2_href_matchObj)
+            #    print('item_2_href_matchObj',item_2_href_matchObj)
+            if len(item_2_href_matchObj)> 1:
+                #get object with hhighest start value
+                item_2_obj = item_2_href_matchObj[-1]
+                for obj in item_2_href_matchObj:
+                    if obj.start() >  item_2_obj.start():
+                        item_2_obj = obj
+                
+                # print('item_2_obj\n',item_2_obj)
+
+                item_3_obj = all_links[candidate[0]+1] # get the next link
+                # print(f'end link \n{item_3_obj[1]} vrs \ncandidate\n{candidate[1]}')
+                #confirm this link is different else take the next one 
+                if item_3_obj[1] != candidate[1] and "DO NOT USE" not in item_3_obj[1] :
+                    item_3_href_matchObj = re.finditer(item_3_obj[1].replace("#","") , soup, flags=re.IGNORECASE)
+                else:
+
+                    item_3_obj = all_links[candidate[0]+2]
+                    item_3_href_matchObj = re.finditer(item_3_obj[1].replace("#","") , soup, flags=re.IGNORECASE)
+
+                # print(f'end link \n{item_3_obj} vrs \ncandidate\n{candidate}')
+                item_3_href_matchObj = list(item_3_href_matchObj)
+                # print('item_3_href_matchObj\n',item_3_href_matchObj)
+                if len(item_3_href_matchObj)> 1:
+                    # the first match is for TOC so get the second match only
+                    # sort by start
+                    item_3_obj = item_3_href_matchObj[-1]
+                    # print(f'end candidate before\n{item_3_obj} ')
+                    for obj in item_3_href_matchObj:
+                        # print(f'{obj.start()} verses  {item_3_obj.start()}')
+                        if obj.start() >  item_3_obj.start():
+                            item_3_obj = obj
+                    # print('item_3_obj\n',item_3_obj)
+                    
+                    # print(f'{item_2_obj.start()}:{item_3_obj.start()}')
+                    results_html = soup[item_2_obj.start()-10:item_3_obj.start()]
+                    results_html = results_html.encode("ascii",errors="ignore")
+                    results_html = results_html.decode("utf-8","ignore")
+                    
+                    #print(results_html)
+                    display(HTML(results_html))
 
 def get_search_results(form_data,max_results_needed=float('inf')):
+
     fd = form_data
 #     clean date formats first
     date_strings = get_date_string( fd.get('filing_date_start'), fd.get('filing_date_end') )
 #     check if user gave form filings to search by
     forms = fd.get('filing_type','') or "10-K,10-Q"
+
     url = "https://efts.sec.gov/LATEST/search-index"
     payload = json.dumps({
     "q":fd.get('target',''),
@@ -142,16 +310,16 @@ def get_search_results(form_data,max_results_needed=float('inf')):
     "enddt":date_strings[1]
     })
     headers = {
-      'authority': 'efts.sec.gov',
-      'accept': 'application/json, text/javascript, */*; q=0.01',
-      'content-type': 'application/json; charset=UTF-8',
-      'sec-ch-ua-mobile': '?0',
-      'user-agent': generate_random_names(),
-      'origin': 'https://www.sec.gov',
-      'sec-fetch-site': 'same-site',
-      'sec-fetch-mode': 'cors',
-      'sec-fetch-dest': 'empty',
-      'referer': 'https://www.sec.gov/',
+    'authority': 'efts.sec.gov',
+    'accept': 'application/json, text/javascript, */*; q=0.01',
+    'content-type': 'application/json; charset=UTF-8',
+    'sec-ch-ua-mobile': '?0',
+    'user-agent': generate_random_names(),
+    'origin': 'https://www.sec.gov',
+    'sec-fetch-site': 'same-site',
+    'sec-fetch-mode': 'cors',
+    'sec-fetch-dest': 'empty',
+    'referer': 'https://www.sec.gov/',
     }
 
     r = requests.post(url, headers=headers, data=payload)
@@ -161,31 +329,41 @@ def get_search_results(form_data,max_results_needed=float('inf')):
         if r.status_code != 200:
             r = requests.post(url, headers=headers, data=payload)
             if r.status_code != 200:
-                print(f"FATAL ERROR: 3 retries failed to retrieve information from url:\n{url}")
+                sec_gov_print(f"FATAL ERROR: 3 retries failed to retrieve information from url:\n{url}")
                 logging.error(f'FATAL ERROR! 3 retries failed to retrieve information from url:\n{url}')
                 return False
 
+
     response_data = json.loads(r.text)
+    
     total_results = response_data.get('hits',{}).get('total',{}).get('value',0)
 
     clean_results = []
-    print("Total results are:",total_results,end="\n\n")
+    sec_gov_print(f"TOTAL SEARCH RESULTS: {total_results}")
     exe = 0
     if total_results > 0:
 
     #user passed limits
         limit = min(max_results_needed,total_results)
     #     add results to total results
+        
         results = response_data.get('hits',{}).get('hits',{})
         for result in results:
+        # print(results)
             source = result.get('_source',{})
+            #print(source)
 
     #     clean data avoid exhibit files
-            if "ex" not in source.get('file_type',"ex").lower():
+            if "ex" not in source.get('file_type',"ex").lower() and "10-" in source.get('file_type'):
                 filing_no = source.get('adsh').replace("-","")
+                adsh = source.get('adsh')
                 ticker = source.get('ciks')[0]
                 index_page = str(FILE_BASE_URL) +  str(ticker) + "/" + str(filing_no)
                 file_name = result.get('_id','').split(":")[-1]
+                cik_without_zeros = source.get('ciks')[0]
+                while cik_without_zeros[0] == "0":
+                    cik_without_zeros=cik_without_zeros[1:]
+
                 data = {
                     'file_date' : source.get('file_date'),
                     'filing_no' : filing_no,
@@ -196,44 +374,73 @@ def get_search_results(form_data,max_results_needed=float('inf')):
                     'display_names' : " ".join(source.get('display_names')),
                     'filing_summa_xml_path': index_page + "/" + 'FilingSummary.xml',
                     'file_path': index_page + "/" + file_name,
-                    'index_page': index_page
+                    'index_page': index_page,
+                    'txt_file_path': "https://www.sec.gov/Archives/edgar/data/"+cik_without_zeros+'/'+filing_no+'/'+adsh+'.txt'
                 }
                 clean_results.append(data)
             else:
                 exe += 1
         
-        print('Exhibits Records (exe) Ignored:',exe,end="\n\n")
+        sec_gov_print(f'Exhibits Records (exe) Ignored: {exe}')
         df = pd.DataFrame.from_dict(clean_results, orient='columns')
         df.sort_values(by=['file_date'], inplace=True, ascending=False)
         return df[:limit]
-#     print("No Records for this search were found")
-    return None
-    
-# Test function results
-# get_search_results({'ticker': 'apple',
-#  'filing_type': '',
-#  'search_type': 'T',
-#  'target': 'balance sheet',
-#  'filing_date_start': '2020-01-01',
-#  'filing_date_end': '2022-03-01'},3)
+
 
 
 # **Form input for Task 1**
+def get_target_name(target,file_type=None):
+    print(target,file_type)
+    if "2." in target: #PART 2
+        #part 2
+        return str(sec_vars.items_10_Q_part_II.get(target.replace("2.",""),None))
+    elif file_type=="10-K":
+        return str(sec_vars.items_10_K.get(target,None))
+    elif file_type=="10-Q": 
+        # it id 10-q part 1
+        return str(sec_vars.items_10_Q_part_I.get(target,None))
+    else :
+        #print('he')
+        dd=sec_vars.items_10_K.get(target,None)
+        ee=sec_vars.items_10_Q_part_I.get(target,None)
+        #print(ee,dd)
+        if dd is not None and ee is not None:
+           return dd #+ '|' + ee
+        elif dd is None and ee is not None:
+            return ee
+        elif dd is not None and ee is None:
+            return dd
+        elif dd is None and ee is None:
+            return None
+        
 
-# In[ ]:
+def get_next_target(target,part='Part I.'):
+    part = 1 if 'Part I.' else 2
+    a_list = list(sec_vars.items_10_K)
+    
+    b_list = list(sec_vars.items_10_Q_part_I)
+    c_list = list(sec_vars.items_10_Q_part_II)
+    #target_name= items_10_K.get(target,items_10_Q_part_I.get(target,items_10_Q_part_II.get(target,None)))
+    #print(target_name)
+    if target in a_list:
+        idx =  a_list.index(target)
+        if idx < len(a_list)-1 :
+            return a_list[idx+1]
+    if target in b_list:
+        idx =  b_list.index(target)
+        if idx < len(b_list)-1:
+            return b_list[idx+1]
+    if target in c_list:
+        idx =  c_list.index(target)
+        if idx < len(c_list)-1:
+            return c_list[idx+1]
+    return None # if at end of the list
 
 
-# def get_inputs_task_1(btn):
-# #     form = {}
-#     form['ticker'] = (ticker.value).strip()
-#     form['filing_type'] = (filing_type.value).upper()
-#     form['target'] = fin_statement.value
-#     form['filing_date_start'] = date_from.value
-#     form['filing_date_end'] = date_to.value
-    #return form
+
+        
 
 
-    #return form
 
 
 # In[ ]:
@@ -249,11 +456,19 @@ def create_task_1_UI():
         form['target'] = doc_section.value
         form['filing_date_start'] = date_from.value
         form['filing_date_end'] = date_to.value
-        form['search_type'] = 't'
-        #generate dynamic search url for queries
-        search_url = generate_search_url(form)
+        form['search_type'] = search_type.value
+        form['part'] = "Part I."
+        if form['search_type'] == "i":
+            if "2." in form['target']:
+                form['part'] = "Part II."
+            form['next_target'] = get_next_target(form['target'],form['part'])
+            #     form['target'].replace('2.','Item ')
+            # else:
+            #     form['target'] = 'Item '+str(form['target'])
 
-        #fetch all search results for query we need only one Result for task one
+        #generate dynamic search url for queries
+        
+       #fetch all search results for query we need only one Result for task one
         results = get_search_results(form,1)
         if results is None:
             print("Your Search did not yield any results",end="\n\n")
@@ -265,9 +480,8 @@ def create_task_1_UI():
                 links_dict = results.to_dict('records')[0]
                 filing_summary_link = links_dict.get('filing_summa_xml_path')
                 
-                print("FILING SUMMARY LINK",filing_summary_link, end="\n\n")
+                print("FILING SUMMARY LINK",filing_summary_link, end="")
                 index_page = links_dict.get('index_page')
-                print(index_page,index_page)
                 soup = get_generic_marketdata(filing_summary_link)
                 tag = soup.find( lambda tag:tag.name.lower() == "shortname" and table_to_fetch.lower() in tag.text.lower() )
                 
@@ -280,25 +494,26 @@ def create_task_1_UI():
                     table_MN = pd.read_html(str(soup.table))[0]
 
                     print('FINANCIAL DATA TITLE:',table_full_ttl)
-                    print('TABLE LINK:',table_link, end="\n\n")
-
+                    print('TABLE LINK:',table_link, end="")
                     display(table_MN)
                     
                 else:
                     print(f"Document with title: {table_to_fetch} Not found")
             # If user was searching for a Particular Item in Document handler
-            if form_inputs.get('search_type','').lower() == 'i' and results is not None:
+            if form.get('search_type','').lower() == 'i' and results is not None:
                 
-                print(
-                    f"Your searching for a particular Item in Part {form_inputs.get('item_part')} and Item number {form_inputs.get('target')}",
-                    end="\n\n"
-                )
-                print(form_inputs, end="\n\n")
+                # print(
+                #     f"Your searching for a particular Item in Part {form.get('item_part')} and Item number {form.get('target')}",
+                #     end="\n\n"
+                # )
+                print(form, end="\n\n")
                 links_dict = results.to_dict('records')[0]
                 print(links_dict)
+                get_item_2(links_dict,form)
+            
         # todo: end execution if results is none
 
-    grid = GridspecLayout(7, 2)
+    grid = GridspecLayout(8, 2)
     style = {'description_width': 'initial'}
     ticker = wdgts.Text(
         value='',
@@ -340,12 +555,12 @@ def create_task_1_UI():
     search_type.observe(search_type_event_handler, names='value')
 
     date_from = wdgts.DatePicker(
-        description='Pick a Date:',
+        description='Date From:',
         disabled=False
     )
 
     date_to = wdgts.DatePicker(
-        description='Pick a Date:',
+        description='Date To:',
         disabled=False
     )
 
@@ -356,6 +571,15 @@ def create_task_1_UI():
         tooltip='Search',
         icon='search' # (FontAwesome names without the `fa-` prefix)
     )
+    # progress_bar = wdgts.IntProgress(
+    # value=0,
+    # min=0,
+    # max=10,
+    # description='Loading:',
+    # bar_style='', # 'success', 'info', 'warning', 'danger' or ''
+    # style={'bar_color': 'maroon'},
+    # orientation='horizontal'
+# )
     btn_search.on_click(get_inputs_task_1)
     grid[0,0] = ticker
     grid[1,0] = filing_type
@@ -364,58 +588,9 @@ def create_task_1_UI():
     grid[4,0] = date_from
     grid[5,0] = date_to
     grid[6,0:] = btn_search
+    #grid[7,0:] = progress_bar
     return grid
     
-
-
-# In[ ]:
-
-
-def get_inputs_tsk1():
-    form = {}
-    form['ticker'] = input('Enter Stock Ticker Symbol>>  ').strip()
-    form['filing_type'] = input('Enter Filing Type Required (10-K,10-Q,etc)>>  ').upper()
-#     Is the User search for a financial table or particular Item
-    while True:
-        form['search_type'] = input("Do you want to search for a Financial Table (T) or Particular Item in Document (I),Please Enter (T) or (I)>>  ").strip()
-        if form['search_type'].lower() == 't' or form['search_type'].lower() == 'i':
-            break
-#     if searching for financial table or searching for particular item
-    search_type = form['search_type'].lower()
-    if search_type == 't':
-        form['target'] = input('Enter Document Required>> ').strip()
-    else:
-        while True:
-            form['item_part'] = input('Do you want to get an item in Part I (1) or Part II (2),Please Enter (1) or (2)>>  ').strip()
-            if form['item_part'] == '1' or form['item_part'] == '2':
-                break
-#       get item number
-        form['target'] = input('Enter Item Number>> ').strip()
-    
-    print('To enter ''Date of Filing'' only enter one date. To enter ''Date period'' enter 2 dates.  ')
-    form['filing_date_start'] = input('Filed FROM Date: (YYYY-MM-DD)>>  ').strip() or None
-    form['filing_date_end'] = input('Filed TO Date: (YYYY-MM-DD)>>  ').strip() or None
-    return form
-
-
-
-def generate_search_url(data):
-    for key in data:
-        if data[key] is None:
-            data[key] = ''
-    ''' get search results from sec.gov and save to excel file'''
-    document = '%2522'+'%2520'.join(data.get('target').split(' '))+'%2522'
-    date_strings = get_date_string( data.get('filing_date_start'), data.get('filing_date_end') )
-    
-    forms =  "10-K%252C10-Q"  if data['filing_type']=='' else  data['filing_type']
-    SEARCH_URL = f"{BASE_URL}q={document}&category=custom&entityName={data.get('ticker')}&forms={forms}&startdt={date_strings[0]}&enddt={date_strings[1]}"
-    print('SEARCH_URL',SEARCH_URL, end="\n\n")
-    return SEARCH_URL
-
-
-# **Form input for Task 2**
-
-# In[ ]:
 
 
 def get_inputs_tsk2():
