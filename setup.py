@@ -61,11 +61,15 @@ def generate_random_names():
      
     return name + ' ' + name.replace(' ','')+ str(random.choice(digits))+'@gmail.com'
 
-def sec_gov_print(message):
-    #out = wdgts.Output(layout={'border': '1px solid black'})
-    #with out:
-    print(message)
-    #display(HTML( f'<span class="ansi-green-fg"> {message}</span>'))
+def sec_gov_print(message,severity=5):
+    if severity == 5:
+        css = "ansi-green-fg"
+    else:
+        css = "ansi-red-intense-fg ansi-bold"
+    
+    style = "border-width: 1px;border-style: solid;border-color: 42A5F5;width: 100%;padding: 5px;"
+
+    display(HTML( f'<span style={style} class="{css}"> {message}</span>'))
        
     
 def clean_soup(soup):
@@ -95,6 +99,12 @@ def request_data(url,payload={}):
     return BeautifulSoup(r.text, 'html.parser')
 
 
+def check_if_target_in_filetype(target,filetype="10-K"):
+    if filetype == "10-K":
+        return target in sec_vars.items_10_K
+    else:
+        return target in sec_vars.items_10_Q_part_I
+#add part two later
 
 
 def get_date_string(filing_date_start,filing_date_end=None):
@@ -102,17 +112,17 @@ def get_date_string(filing_date_start,filing_date_end=None):
 #   start_date --- end_date
     today = date.today()
     five_years_ago = today - datetime.timedelta(days=3*365)
-    default_start_date = today.strftime("%Y-%m-%d")
-    default_end_date = five_years_ago.strftime("%Y-%m-%d")
+    default_end_date = today.strftime("%Y-%m-%d")
+    default_start_date = five_years_ago.strftime("%Y-%m-%d")
     
     if filing_date_start and not filing_date_end:
-        return  (filing_date_start,filing_date_start)
+        return  (filing_date_start,default_end_date)
     elif not filing_date_start and  filing_date_end:
-        return  (filing_date_end,filing_date_end)
+        return  (default_start_date,filing_date_end)
     elif filing_date_start and filing_date_end:
         return  (filing_date_start,filing_date_end)
     else:
-        return (default_end_date,default_start_date)
+        return (default_start_date,default_end_date)
 
 
 
@@ -193,15 +203,7 @@ def get_item_2(results,form_data):
         target_name = get_target_name(target)
         next_target_name = get_target_name(next_target)
         print(f'from {target}{target_name} to {next_target}{next_target_name}')
-        # next_target = {}
-        # next_target['target'] = get_next_target(target)
-        # next_target['name'] = get_target_name(next_target['target'],file_type)
-        # print('next_targetss',next_target)
-        #SEARCH THROUGH ALL THE toc headers so that we know the order of headers
-        # target_candidates = soup.find_all("a",re.compile(f'Item {target}.|Item {target}|Item&bnsp;{target}|Item&#160;{target}|Item{target}',flags=re.IGNORECASE))
-        # print(target_candidates)
-        # next_target_candidates = soup.find_all("a",re.compile(f'Item {next_target}.|Item {next_target}|Item&bnsp;{next_target}|Item&#160;{next_target}|Item{next_target}',flags=re.IGNORECASE))
-        # print(target_candidates)
+  
 
         target_candidates = soup.find_all("a",string=re.compile(f'{target_name}|Item {target}.|Item {target}|Item&bnsp;{target}|Item&#160;{target}|Item{target}|Item',flags=re.IGNORECASE))
         next_target_candidates = soup.find_all("a",string=re.compile(f'{next_target_name}|Item {next_target}.|Item {next_target}|Item&bnsp;{next_target}|Item&#160;{next_target}|Item{next_target}|Item',flags=re.IGNORECASE))
@@ -306,8 +308,8 @@ def get_search_results(form_data,max_results_needed=float('inf')):
     "category":"custom",
     "entityName":fd.get('ticker',''),
     "forms":forms.split(','),
-    "startdt":date_strings[0],
-    "enddt":date_strings[1]
+    "startdt":str(date_strings[0]),
+    "enddt":str(date_strings[1])
     })
     headers = {
     'authority': 'efts.sec.gov',
@@ -414,27 +416,55 @@ def get_target_name(target,file_type=None):
             return None
         
 
-def get_next_target(target,part='Part I.'):
-    part = 1 if 'Part I.' else 2
-    a_list = list(sec_vars.items_10_K)
+def get_next_target(target,part=None,file_type=""):
+    if part:
+        if part == "Part I":
+            part = 1
+        else:
+            part = 2
+
+
+    if target in ["1B","6","7","7A","8","9","9A","9B","10","11","12","13","14"]:
+        file_type = "10-K"
+        # these are unique to it
+    elif part:
+        file_type = "10-Q"
+        if target in ["1A","5"]:
+            part = 2
+            #these are unique to it
     
+    a_list = list(sec_vars.items_10_K)
     b_list = list(sec_vars.items_10_Q_part_I)
     c_list = list(sec_vars.items_10_Q_part_II)
     #target_name= items_10_K.get(target,items_10_Q_part_I.get(target,items_10_Q_part_II.get(target,None)))
     #print(target_name)
-    if target in a_list:
+    if file_type == "10-K" and target in a_list:
         idx =  a_list.index(target)
         if idx < len(a_list)-1 :
             return a_list[idx+1]
-    if target in b_list:
-        idx =  b_list.index(target)
-        if idx < len(b_list)-1:
-            return b_list[idx+1]
-    if target in c_list:
-        idx =  c_list.index(target)
-        if idx < len(c_list)-1:
-            return c_list[idx+1]
+    elif file_type == "10-Q" :
+        if part ==1 and target in b_list:
+            idx =  b_list.index(target)
+            if idx < len(b_list)-1:
+                return b_list[idx+1]
+        elif target in c_list :
+            idx =  c_list.index(target)
+            if idx < len(c_list)-1:
+                return c_list[idx+1]
     return None # if at end of the list
+    # if target in a_list:
+    #     idx =  a_list.index(target)
+    #     if idx < len(a_list)-1 :
+    #         return a_list[idx+1]
+    # if target in b_list:
+    #     idx =  b_list.index(target)
+    #     if idx < len(b_list)-1:
+    #         return b_list[idx+1]
+    # if target in c_list:
+    #     idx =  c_list.index(target)
+    #     if idx < len(c_list)-1:
+    #         return c_list[idx+1]
+    
 
 
 
@@ -461,7 +491,7 @@ def create_task_1_UI():
         if form['search_type'] == "i":
             if "2." in form['target']:
                 form['part'] = "Part II."
-            form['next_target'] = get_next_target(form['target'],form['part'])
+            #form['next_target'] = get_next_target(form['target'],form['part'],form['filing_type'])
             #     form['target'].replace('2.','Item ')
             # else:
             #     form['target'] = 'Item '+str(form['target'])
@@ -482,7 +512,7 @@ def create_task_1_UI():
                 
                 print("FILING SUMMARY LINK",filing_summary_link, end="")
                 index_page = links_dict.get('index_page')
-                soup = get_generic_marketdata(filing_summary_link)
+                soup = request_data(filing_summary_link)
                 tag = soup.find( lambda tag:tag.name.lower() == "shortname" and table_to_fetch.lower() in tag.text.lower() )
                 
                 if tag:
@@ -490,7 +520,7 @@ def create_task_1_UI():
                     table_link = index_page + '/' + parent.find('htmlfilename').text
                     table_full_ttl = parent.find('longname').text
                     print("table_link",table_link)
-                    soup = get_generic_marketdata(table_link)
+                    soup = request_data(table_link)
                     table_MN = pd.read_html(str(soup.table))[0]
 
                     print('FINANCIAL DATA TITLE:',table_full_ttl)
@@ -502,14 +532,14 @@ def create_task_1_UI():
             # If user was searching for a Particular Item in Document handler
             if form.get('search_type','').lower() == 'i' and results is not None:
                 
-                # print(
-                #     f"Your searching for a particular Item in Part {form.get('item_part')} and Item number {form.get('target')}",
-                #     end="\n\n"
-                # )
-                print(form, end="\n\n")
                 links_dict = results.to_dict('records')[0]
                 print(links_dict)
-                get_item_2(links_dict,form)
+                form['next_target'] = get_next_target(form['target'],form['part'],links_dict['file_type'])
+                print(form, end="\n\n")
+                if check_if_target_in_filetype(form['target'],links_dict['file_type']):
+                    get_item_2(links_dict,form)
+                else:
+                    sec_gov_print(f"The requested document {links_dict['file_type']} is not found in most recent document{form['target']}.\nSelect another criteria.",10)
             
         # todo: end execution if results is none
 
